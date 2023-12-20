@@ -1,0 +1,40 @@
+﻿@model FeatureFlags.Core.ViewModels.UserEditViewModel
+@using FeatureFlags.Core.Helpers.TagHelpers
+
+@{
+    ViewData["Title"] = "Edit";
+    string controller = ViewData["controller"]?.ToString() ?? "Users";
+}
+
+<h1 class="display-6 fw-bold mb-4">Edit</h1>
+
+<form asp-action="Edit" asp-route-id="@Model.Id" method="post">
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+    <input type="hidden" asp-for="Id" />
+
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            <div class="form-group">
+                <label asp-for="Username"></label>
+                <input asp-for="Username" class="form-control" />
+                <span asp-validation-for="Username" class="text-danger"></span>
+            </div>
+        </div>
+
+        <div class="col-md-6 mb-3">
+            <div class="form-group">
+                <label asp-for="Email"></label>
+                <input asp-for="Email" class="form-control" />
+                <span asp-validation-for="Email" class="text-danger"></span>
+            </div>
+        </div>
+    </div>
+
+    @Html.EnumCheckboxesFor(model => model.Flags, Model.Flags, "mb-3", false)
+
+    <div class="form-group mt-4">
+        <button type="submit" class="btn btn-success">Save Changes</button>
+        @Html.ActionLink("Back", "Index", controller, null, new { @class = "btn btn-secondary" })
+    </div>
+</form>

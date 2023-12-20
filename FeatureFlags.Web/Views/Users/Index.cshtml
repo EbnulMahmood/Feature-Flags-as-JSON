@@ -1,0 +1,333 @@
+﻿@using FeatureFlags.Core.Helper
+@using FeatureFlags.Core.Helpers
+@inject Microsoft.AspNetCore.Antiforgery.IAntiforgery Xsrf
+@model IEnumerable<FeatureFlags.Core.Dtos.UserDto>
+
+@{
+    ViewData["Title"] = "Manage";
+    var flagFilterItems = UserFlagsHelper.GetFlagFilterItems();
+}
+
+@functions
+{
+    private string? GetAntiXsrfRequestToken()
+    {
+        return Xsrf.GetAndStoreTokens(Context).RequestToken;
+    }
+}
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/datatables/1.10.21/css/dataTables.bootstrap.min.css" integrity="sha512-BMbq2It2D3J17/C7aRklzOODG1IQ3+MHw3ifzBHMBwGO/0yUqYmsStgBjI0z5EYlaDEFnvYV7gNYdD3vFLRKsA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+<link href="~/css/shared.css" rel="stylesheet" />
+
+<style>
+    .flag-container {
+        display: flex;
+        flex-wrap: wrap;
+    }
+
+    .flag {
+        display: inline-block;
+        padding: 4px 8px;
+        margin: 2px;
+        background-color: #f0f0f0;
+        border-radius: 4px;
+        font-size: 14px;
+        font-weight: bold;
+    }
+
+    .none {
+        background-color: #ccc;
+        color: #333;
+    }
+
+    .dark-mode {
+        background-color: #343a40;
+        color: white;
+    }
+
+    .super-admin {
+        background-color: #ffc107;
+        color: #212529;
+    }
+
+    .notification-opt-in {
+        background-color: #28a745;
+        color: white;
+    }
+
+    .metered-billing {
+        background-color: #007bff;
+        color: white;
+    }
+
+    .rollout-chat {
+        background-color: #17a2b8;
+        color: white;
+    }
+
+    .experiment-blue {
+        background-color: #007bff;
+        color: white;
+    }
+
+    .log-verbose {
+        background-color: #dc3545;
+        color: white;
+    }
+
+    .new-legal-disclaimer {
+        background-color: #6c757d;
+        color: white;
+    }
+
+    .action-links {
+        margin-top: 5px;
+    }
+
+    .action-link {
+        text-decoration: none;
+        color: #0366d6;
+        margin-right: 5px;
+    }
+</style>
+
+<h1 class="display-6 fw-bold mb-4">Manage</h1>
+
+<div class="row mb-3">
+    <div class="col-md-2">
+        <select id="flagFilter" class="form-select">
+            <option value="">Filter by Flag</option>
+            @foreach (var item in flagFilterItems)
+            {
+                <option value="@item.Value">@item.Text</option>
+            }
+        </select>
+    </div>
+    <div class="col-md-2">
+        <input type="text" id="viewsMin" class="form-control" placeholder="Views (<)">
+    </div>
+    <div class="col-md-2">
+        <input type="text" id="viewsMax" class="form-control" placeholder="Views (>)">
+    </div>
+    <div class="col-md-2">
+        <input type="number" id="pageSize" class="form-control" value="@Constants.datatablePageSize" min="1" step="1">
+    </div>
+    <div class="col-md-2">
+        <button id="viewButton" class="btn btn-secondary">View</button>
+    </div>
+    <div class="col-md-2">
+        <div class="d-flex justify-content-md-end">
+            <a asp-action="Create" class="btn btn-success">Add New</a>
+        </div>
+    </div>
+</div>
+
+<div class="customMessage"></div>
+
+<table id="dataGrid" class="display table table-responsive table-striped table-bordered" style="width:100%">
+    <thead>
+        <tr>
+            <th>Serial</th>
+            <th>Username</th>
+            <th>Email</th>
+            <th>Created At</th>
+            <th>Modifie At</th>
+            <th>Flags</th>
+            <th style="min-width:120px;">Action</th>
+        </tr>
+    </thead>
+    <tbody>
+    </tbody>
+</table>
+
+@section Scripts {
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/datatables/1.10.21/js/jquery.dataTables.min.js" integrity="sha512-BkpSL20WETFylMrcirBahHfSnY++H2O1W+UnEEO4yNIl+jI2+zowyoGJpbtk6bx97fBXf++WJHSSK2MV4ghPcg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootbox.js/5.5.2/bootbox.min.js" integrity="sha512-RdSPYh1WA6BF0RhpisYJVYkOyTzK4HwofJ3Q7ivt/jkpW6Vc8AurL1R+4AUcvn9IwEKAPm/fk7qFZW3OuiUDeg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+    <script>
+        $(document).ready(function () {
+            initializeDataTable();
+
+            $('#viewButton').click(function () {
+                refreshDataTable();
+            });
+
+            $(document).on("click", ".delete-action", function () {
+                const itemId = $(this).attr("data-id");
+                const itemName = $(this).attr("data-name");
+                const url = '@Url.Action("DeleteConfirmed", "Users")';
+                const csrfToken = '@GetAntiXsrfRequestToken()';
+
+                deleteItemAjaxBootbox(itemId, itemName, url, refreshDataTable, csrfToken);
+
+            });
+        });
+
+        const getRequestHeader = (csrfToken) => {
+            const requestHeader = {}
+
+            if (csrfToken !== '' && csrfToken !== null) {
+                requestHeader["RequestVerificationToken"] = csrfToken;
+            }
+
+            return requestHeader;
+        }
+
+        const deleteItemAjaxBootbox = (itemId, itemName, url, onDeleteCallDatatable, csrfToken = '') => {
+            try {
+                bootbox.confirm({
+                    title: "Are you sure?",
+                    message: `You're about to delete ${itemName}!`,
+                    centerVertical: true,
+                    closeButton: true,
+                    buttons: {
+                        cancel: {
+                            label: 'Cancel',
+                            className: 'btn-success'
+                        },
+                        confirm: {
+                            label: 'Delete',
+                            className: 'btn-danger'
+                        }
+                    },
+                    callback: function (result) {
+                        if (result === true) {
+                            $.ajax({
+                                type: 'POST',
+                                async: true,
+                                headers: getRequestHeader(csrfToken),
+                                url: url,
+                                data: {
+                                    'id': itemId
+                                },
+                                success: function (response, textStatus, xhr) {
+                                    $('.customMessage').empty();
+
+                                    if (response.isSuccess === true) {
+                                        const successMessage = getAlertMessage('success', response.message);
+                                        $('.customMessage').append(successMessage);
+                                    } else {
+                                        const warningMessage = getAlertMessage('warning', response.message);
+                                        $('.customMessage').append(warningMessage);
+                                    }
+
+                                    onDeleteCallDatatable();
+                                },
+                                error: function () {
+                                    const errorMessage = getAlertMessage('danger', 'Error occurred while deleting item.');
+                                    $('.customMessage').empty().append(errorMessage);
+                                }
+                            });
+                        }
+                    }
+                });
+            } catch (ex) {
+                showErrorMessage('.customMessage');
+            }
+        }
+
+        const getAlertMessage = (textStatus, message) => {
+            return `<div class="alert alert-${textStatus} alert-dismissible fade show" role="alert">
+                        <strong>${message}!</strong>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>`;
+        }
+
+        const initializeDataTable = () => {
+            const dataTableId = "#dataGrid";
+            const url = '@Url.Action("UsersDatatable", "Users")';
+            const pageSize = @Constants.datatablePageSize;
+            const csrfToken = '@GetAntiXsrfRequestToken()';
+            const searchOptions = {
+                flag: '#flagFilter',
+                viewsMin: '#viewsMin',
+                viewsMax: '#viewsMax',
+            };
+
+            dataTableRender({
+                tableId: dataTableId,
+                url: url,
+                pageSize: pageSize,
+                csrfToken: csrfToken,
+                searchOptions: searchOptions,
+                setScrollY: '50vh',
+            });
+        };
+
+        const refreshDataTable = () => {
+            initializeDataTable();
+        };
+
+        const pageSizeValidation = (pageSize) => {
+            if ($("#pageSize").val() !== "" && $("#pageSize").val() > 0 && /^\d+$/.test($('#pageSize').val())) {
+                pageSize = $("#pageSize").val();
+            }
+            else {
+                $("#pageSize").val(pageSize);
+            }
+
+            return pageSize;
+        };
+
+        const searchOptionsKeyValueObject = (options = {}) => {
+            const configOptions = {};
+
+            for (const [key, id] of Object.entries(options)) {
+                const value = $(id).val() ?? '';
+                configOptions[key] = value.trim();
+            }
+
+            return configOptions;
+        };
+
+        const showErrorMessage = (className, message = 'Data load error. Please try again') => {
+            const errorMessage = getAlertMessage('warning', message)
+            $(className).empty();
+            $(className).append(errorMessage);
+        }
+
+        const dataTableRender = ({ tableId, url, pageSize, csrfToken = '', searchOptions = {}, setScrollY = false, fixedColumsList = false } = {}) => {
+
+            try {
+                const displayLength = pageSizeValidation(pageSize);
+
+                const options = searchOptionsKeyValueObject(searchOptions);
+
+                $(tableId).DataTable({
+                    destroy: true,
+                    processing: true,
+                    searching: false,
+                    serverSide: true,
+                    scrollX: true,
+                    scrollY: setScrollY,
+                    bLengthChange: false,
+                    iDisplayLength: parseInt(displayLength),
+                    async: true,
+                    bSort: false,
+                    fixedColumns: fixedColumsList,
+                    ajax: {
+                        url: url,
+                        type: "POST",
+                        async: true,
+                        headers: getRequestHeader(csrfToken),
+                        data: (data) => {
+                            return $.extend({}, data, options)
+                        },
+                        dataSrc: function (json) {
+                            console.log(json);
+                            if (json.isSuccess === false) {
+                                showErrorMessage('.customMessage', json.message);
+                            }
+                            return json.data;
+                        },
+                        error: function (response) {
+                            showErrorMessage('.customMessage');
+                        }
+                    }
+                });
+            } catch (ex) {
+                showErrorMessage('.customMessage');
+            }
+        };
+    </script>
+}
